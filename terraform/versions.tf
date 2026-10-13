@@ -35,6 +35,7 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
+  profile = "terraform"
 }
 
 provider "helm" {
@@ -57,4 +58,5 @@ provider "kubectl" {
     command     = "aws"
     args        = ["eks", "get-token", "--cluster-name", module.retail_app_eks.cluster_name]
   }
+  
 }
