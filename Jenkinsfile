@@ -72,7 +72,18 @@ pipeline {
       when {
         branch 'main'
         anyOf {
-          changeset 'src/**'
+          allOf {
+            changeset 'src/**'
+            not {
+              anyOf {
+                changeset 'src/ui/chart/values.yaml'
+                changeset 'src/catalog/chart/values.yaml'
+                changeset 'src/cart/chart/values.yaml'
+                changeset 'src/checkout/chart/values.yaml'
+                changeset 'src/orders/chart/values.yaml'
+              }
+            }
+          }
           expression { currentBuild.previousBuild == null }
         }
       }
@@ -86,7 +97,14 @@ pipeline {
           }
 
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-          env.IMAGE_TAG = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+          env.IMAGE_TAG = sh(
+            script: "sed -n 's/^version: *//p' src/app/chart/Chart.yaml | head -n 1",
+            returnStdout: true
+          ).trim()
+          if (!(env.IMAGE_TAG ==~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)) {
+            error('Set src/app/chart/Chart.yaml version to a SemVer MAJOR.MINOR.PATCH value, for example 1.2.3.')
+          }
+          env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
         }
 
         sh '''
@@ -100,10 +118,20 @@ pipeline {
             if aws ecr describe-images --region "$AWS_REGION" \
               --repository-name "retail-store-$service" \
               --image-ids "imageTag=$IMAGE_TAG" >/dev/null 2>&1; then
+              docker pull "$image"
+              existing_revision=$(docker image inspect \
+                --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$image")
+              if [ "$existing_revision" != "$GIT_REVISION" ]; then
+                echo "Image tag $image already belongs to revision ${existing_revision:-unknown}."
+                echo "Bump src/app/chart/Chart.yaml version before publishing a different revision."
+                exit 1
+              fi
               echo "Reusing existing image $image"
               continue
             fi
-            docker build --pull --tag "$image" "src/$service"
+            docker build --pull \
+              --label "org.opencontainers.image.revision=$GIT_REVISION" \
+              --tag "$image" "src/$service"
             docker push "$image"
           done
         '''

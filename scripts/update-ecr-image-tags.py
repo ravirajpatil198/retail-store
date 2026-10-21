@@ -10,8 +10,8 @@ def main():
     registry, image_tag = sys.argv[1:]
     if not re.fullmatch(r"\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com", registry):
         raise SystemExit("Invalid ECR registry")
-    if not re.fullmatch(r"[a-f0-9]{12}", image_tag):
-        raise SystemExit("Image tag must be a 12-character commit hash")
+    if not re.fullmatch(r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", image_tag):
+        raise SystemExit("Image tag must be a SemVer MAJOR.MINOR.PATCH value, for example 1.2.3")
 
     for service in ("ui", "catalog", "cart", "checkout", "orders"):
         path = Path("src") / service / "chart" / "values.yaml"
