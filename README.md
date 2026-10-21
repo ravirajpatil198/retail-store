@@ -221,7 +221,7 @@ This creates the core infrastructure, including:
 - Amazon EKS cluster with Auto Mode enabled
 - Security groups and IAM roles
 
-And deploys:
+And deploys::
 - ArgoCD for Setup GitOps
 - NGINX Ingress Controller
 - Cert Manager for SSL certificates
