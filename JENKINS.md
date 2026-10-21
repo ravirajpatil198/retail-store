@@ -56,6 +56,10 @@ commit on `main`; Jenkins does not need cluster-admin credentials.
   with a version-bump message if the tag belongs to different code.
 - Jenkins pushes the chart-values commit to `main`. The resulting
   chart-only build does not publish images again, avoiding a push loop.
+- Before pushing, Jenkins fetches the latest `main` and rebases only its
+  generated chart-values commit onto it. It retries a rejected push up to
+  three times and never force-pushes; conflicting chart-value changes fail
+  visibly and must be reconciled before retrying.
 - The first `main` build publishes all five images. Later builds publish when
   files under `src/` change, except for the five generated service chart
   `values.yaml` files.

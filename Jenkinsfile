@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   options {
-    buildDiscarder(logRotator(numToKeepStr: '20'))
+    buildDiscarder(logRotator(numToKeepStr: '5'))
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
     timestamps()
@@ -150,8 +150,34 @@ pipeline {
 
         sshagent(['gitops-ssh-key']) {
           sh '''
+            set -eu
             git remote set-url origin git@github.com:ravirajpatil198/retail-store.git
-            git push origin HEAD:refs/heads/main
+
+            if [ "$(git rev-parse HEAD)" = "$GIT_REVISION" ]; then
+              echo "No image-tag changes to commit; skipping GitOps push."
+              exit 0
+            fi
+
+            attempt=1
+            while [ "$attempt" -le 3 ]; do
+              git fetch origin +refs/heads/main:refs/remotes/origin/main
+              if ! git -c core.editor=true rebase --onto origin/main HEAD^ HEAD; then
+                echo "Could not rebase the generated image-tag commit onto main."
+                echo "Resolve conflicting chart values and rerun the build."
+                git rebase --abort || true
+                exit 1
+              fi
+
+              if git push origin HEAD:refs/heads/main; then
+                exit 0
+              fi
+
+              echo "Push attempt $attempt failed; refreshing main and retrying."
+              attempt=$((attempt + 1))
+            done
+
+            echo "Could not push the GitOps commit after 3 attempts."
+            exit 1
           '''
         }
       }

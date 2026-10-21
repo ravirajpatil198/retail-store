@@ -395,7 +395,7 @@ version.
 | `aws sts get-caller-identity` fails | Confirm the instance role is attached to the agent and its trust relationship is correct; do not add static keys as a workaround. |
 | ECR login or image push is denied | Check `AWS_ACCOUNT_ID`, `AWS_REGION`, repository names, and the scoped ECR push policy. |
 | ECR repository is missing | Create the exact `retail-store-{ui,catalog,cart,checkout,orders}` repositories in the configured account and region. |
-| Jenkins cannot push the chart update | Confirm `gitops-ssh-key` exists, GitHub accepts its public key, the key can write to `main`, and `origin` is the intended GitHub repository. |
+| Jenkins cannot push the chart update | The pipeline fetches and rebases its generated commit, then retries pushes up to three times. Confirm `gitops-ssh-key` can write to `main`; if Jenkins reports a rebase conflict, reconcile the chart-value changes and rerun the build. |
 | Argo CD reports a repository/project error | Compare the `repoURL` in all five application files with the `sourceRepos` allowed in the AppProject and the real repository URL. |
 | Argo CD cannot pull a private image | Confirm the EKS node role has ECR pull permissions and resolve the charts' `regcred` reference as described in step 5. |
 | A branch build does not publish images | Publishing is intentionally restricted to `main` and to service changes under `src/`, except for a job's first build. |
