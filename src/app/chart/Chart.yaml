@@ -2,7 +2,7 @@ apiVersion: v2
 name: retail-store-sample-chart
 description: A Helm chart for the AWS retail store containers sample application
 type: application
-version: 1.2.3
+version: 1.2.6
 dependencies:
   - name: retail-store-sample-cart-chart
     alias: cart
