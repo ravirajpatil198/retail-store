@@ -1,7 +1,7 @@
 # Jenkins CI/CD
 
 This pipeline checks the five services, builds their Docker images, publishes
-commit-tagged images to Amazon ECR, and updates the Helm values watched by
+SemVer-tagged images to Amazon ECR, and updates the Helm values watched by
 Argo CD. Argo CD performs the Kubernetes rollout after it sees the values
 commit on `main`; Jenkins does not need cluster-admin credentials.
 
@@ -48,14 +48,17 @@ commit on `main`; Jenkins does not need cluster-admin credentials.
 
 - Every branch runs Helm lint, Go tests, Maven tests, and checkout lint/build
   and integration tests.
-- Only `main` publishes images. Each image is tagged with the 12-character
-  source commit hash, and the service chart values are updated to those
-  immutable ECR tags. If a retry finds an image already published for that
-  commit, it reuses the image rather than attempting to overwrite the tag.
+- Only `main` publishes images. The image tag comes from
+  `src/app/chart/Chart.yaml` (`MAJOR.MINOR.PATCH`) and the service chart values
+  are updated to those immutable ECR tags. Bump that version for each new
+  release. Images include their source Git revision as an OCI label; a retry
+  reuses an existing tag only when it belongs to the same revision, and fails
+  with a version-bump message if the tag belongs to different code.
 - Jenkins pushes the chart-values commit to `main`. The resulting
   chart-only build does not publish images again, avoiding a push loop.
 - The first `main` build publishes all five images. Later builds publish when
-  files under `src/` change.
+  files under `src/` change, except for the five generated service chart
+  `values.yaml` files.
 - Repository URLs, AWS account, region, and the GitOps branch are not
   credentials: review them when adapting this pipeline to another account or
   branch. If Argo CD watches a different branch, update both the pipeline's
