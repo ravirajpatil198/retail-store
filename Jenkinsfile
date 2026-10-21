@@ -82,7 +82,7 @@ pipeline {
             error('Set AWS_ACCOUNT_ID to the 12-digit AWS account ID in Jenkins.')
           }
           if (!(env.AWS_REGION ==~ /^[a-z0-9-]+$/)) {
-            error('Set AWS_REGION in Jenkins, for example us-west-2.')
+            error('Set AWS_REGION in Jenkins, for example ap-south-1.')
           }
 
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
@@ -120,21 +120,11 @@ pipeline {
           fi
         '''
 
-        script {
-          def originUrl = sh(script: 'git remote get-url origin', returnStdout: true).trim()
-          def pushUrl = originUrl.replaceFirst(/^https:\/\/github\.com\//, 'git@github.com:')
-          if (!pushUrl.startsWith('git@github.com:')) {
-            error('The origin remote must be a GitHub HTTPS or SSH URL to push the GitOps update.')
-          }
-
-          withEnv(["GITOPS_SSH_URL=${pushUrl}"]) {
-            sshagent(credentials: ['gitops-ssh-key']) {
-              sh '''
-                git remote set-url origin "$GITOPS_SSH_URL"
-                git push origin HEAD:refs/heads/main
-              '''
-            }
-          }
+        sshagent(['gitops-ssh-key']) {
+          sh '''
+            git remote set-url origin git@github.com:ravirajpatil198/retail-store.git
+            git push origin HEAD:refs/heads/main
+          '''
         }
       }
       post {
