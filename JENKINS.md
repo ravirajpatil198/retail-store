@@ -1,15 +1,15 @@
 # Jenkins CI/CD
 
 This pipeline checks the five services, builds their Docker images, publishes
-commit-tagged images to Amazon ECR, and updates the Helm values watched by
-Argo CD. Argo CD performs the Kubernetes rollout after it sees the values
+branch-prefixed SemVer images to Amazon ECR, and updates the Helm values watched
+by Argo CD. Argo CD performs the Kubernetes rollout after it sees the values
 commit on `main`; Jenkins does not need cluster-admin credentials.
 
 ## Jenkins setup
 
 1. Create a **Multibranch Pipeline** for the GitHub repository with a webhook
-   trigger. The repository's Argo CD applications currently watch the `main`
-   branch.
+   trigger. Ensure its branch filter includes both `main` and `feature`; the
+   repository's Argo CD applications watch `main`.
 2. The Jenkinsfile uses `agent any`, so the build runs on any available
    executor, including the built-in controller node if it has executors
    enabled. The selected node must be Linux, have a working Docker daemon, and
@@ -31,7 +31,8 @@ commit on `main`; Jenkins does not need cluster-admin credentials.
    `retail-store-ui`, `retail-store-catalog`, `retail-store-cart`,
    `retail-store-checkout`, and `retail-store-orders`. Configure tag
    mutability as **Immutable**. The agent's IAM role needs
-   `ecr:GetAuthorizationToken` plus `ecr:DescribeImages` and ECR image upload
+   `ecr:GetAuthorizationToken`, `ecr:DescribeImages`, ECR image-pull permissions
+   (`ecr:BatchGetImage`, `ecr:GetDownloadUrlForLayer`), and image-upload
    permissions (`ecr:BatchCheckLayerAvailability`,
    `ecr:InitiateLayerUpload`, `ecr:UploadLayerPart`,
    `ecr:CompleteLayerUpload`, and `ecr:PutImage`) for those repositories.
@@ -48,14 +49,20 @@ commit on `main`; Jenkins does not need cluster-admin credentials.
 
 - Every branch runs Helm lint, Go tests, Maven tests, and checkout lint/build
   and integration tests.
-- Only `main` publishes images. Each image is tagged with the 12-character
-  source commit hash, and the service chart values are updated to those
-  immutable ECR tags. If a retry finds an image already published for that
-  commit, it reuses the image rather than attempting to overwrite the tag.
-- Jenkins pushes the chart-values commit to `main`. The resulting
-  chart-only build does not publish images again, avoiding a push loop.
-- The first `main` build publishes all five images. Later builds publish when
-  files under `src/` change.
+- The `feature` branch publishes images tagged `feature-MAJOR.MINOR.PATCH`
+  (for example, `feature-1.2.5`). The `main` branch publishes
+  `prod-MAJOR.MINOR.PATCH` (for example, `prod-1.2.5`).
+- Both branches use the same five ECR repositories, with the branch prefix
+  keeping feature and production tags separate. ECR tags should be immutable.
+  Bump `src/app/chart/Chart.yaml` for each new release version. A retry reuses
+  an existing tag only when its image's source Git revision matches; a
+  different revision with the same tag fails rather than overwriting it.
+- Only `main` updates Helm values and pushes the GitOps commit. `feature` only
+  publishes its images. Jenkins-generated service `values.yaml` changes do
+  not trigger another image publish.
+- The first build for each branch publishes all five images. Later builds
+  publish when `src/` changes, except for Jenkins-generated service chart
+  values.
 - Repository URLs, AWS account, region, and the GitOps branch are not
   credentials: review them when adapting this pipeline to another account or
   branch. If Argo CD watches a different branch, update both the pipeline's

@@ -68,11 +68,25 @@ pipeline {
       }
     }
 
-    stage('Build, publish, and deploy') {
+    stage('Build and publish images') {
       when {
-        branch 'main'
         anyOf {
-          changeset 'src/**'
+          branch 'main'
+          branch 'feature'
+        }
+        anyOf {
+          allOf {
+            changeset 'src/**'
+            not {
+              anyOf {
+                changeset 'src/ui/chart/values.yaml'
+                changeset 'src/catalog/chart/values.yaml'
+                changeset 'src/cart/chart/values.yaml'
+                changeset 'src/checkout/chart/values.yaml'
+                changeset 'src/orders/chart/values.yaml'
+              }
+            }
+          }
           expression { currentBuild.previousBuild == null }
         }
       }
@@ -86,7 +100,22 @@ pipeline {
           }
 
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-          env.IMAGE_TAG = sh(script: 'git rev-parse --short=12 HEAD', returnStdout: true).trim()
+          env.SEMVER = sh(
+            script: "sed -n 's/^version: *//p' src/app/chart/Chart.yaml | head -n 1",
+            returnStdout: true
+          ).trim()
+          if (!(env.SEMVER ==~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)) {
+            error('Set src/app/chart/Chart.yaml version to a SemVer MAJOR.MINOR.PATCH value, for example 1.2.3.')
+          }
+          if (env.BRANCH_NAME == 'main') {
+            env.IMAGE_TAG_PREFIX = 'prod'
+          } else if (env.BRANCH_NAME == 'feature') {
+            env.IMAGE_TAG_PREFIX = 'feature'
+          } else {
+            error("Image publishing is not configured for branch '${env.BRANCH_NAME}'.")
+          }
+          env.IMAGE_TAG = "${env.IMAGE_TAG_PREFIX}-${env.SEMVER}"
+          env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
         }
 
         sh '''
@@ -100,14 +129,38 @@ pipeline {
             if aws ecr describe-images --region "$AWS_REGION" \
               --repository-name "retail-store-$service" \
               --image-ids "imageTag=$IMAGE_TAG" >/dev/null 2>&1; then
+              docker pull "$image"
+              existing_revision=$(docker image inspect \
+                --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$image")
+              if [ "$existing_revision" != "$GIT_REVISION" ]; then
+                echo "Image tag $image already belongs to revision ${existing_revision:-unknown}."
+                echo "Bump src/app/chart/Chart.yaml version before publishing different code."
+                exit 1
+              fi
               echo "Reusing existing image $image"
               continue
             fi
-            docker build --pull --tag "$image" "src/$service"
+            docker build --pull \
+              --label "org.opencontainers.image.revision=$GIT_REVISION" \
+              --tag "$image" "src/$service"
             docker push "$image"
           done
         '''
+      }
+      post {
+        always {
+          sh 'if [ -n "$ECR_REGISTRY" ]; then docker logout "$ECR_REGISTRY" >/dev/null 2>&1 || true; fi'
+        }
+      }
+    }
 
+    stage('Update GitOps values') {
+      when {
+        expression {
+          env.BRANCH_NAME == 'main' && env.IMAGE_TAG != null
+        }
+      }
+      steps {
         sh '''
           python3 scripts/update-ecr-image-tags.py "$ECR_REGISTRY" "$IMAGE_TAG"
           git config user.name "Jenkins"
@@ -122,14 +175,35 @@ pipeline {
 
         sshagent(['gitops-ssh-key']) {
           sh '''
+            set -eu
             git remote set-url origin git@github.com:ravirajpatil198/retail-store.git
-            git push origin HEAD:refs/heads/main
+
+            if [ "$(git rev-parse HEAD)" = "$GIT_REVISION" ]; then
+              echo "No image-tag changes to commit; skipping GitOps push."
+              exit 0
+            fi
+
+            attempt=1
+            while [ "$attempt" -le 3 ]; do
+              git fetch origin +refs/heads/main:refs/remotes/origin/main
+              if ! git -c core.editor=true rebase --onto origin/main HEAD^ HEAD; then
+                echo "Could not rebase the generated image-tag commit onto main."
+                echo "Resolve conflicting chart values and rerun the build."
+                git rebase --abort || true
+                exit 1
+              fi
+
+              if git push origin HEAD:refs/heads/main; then
+                exit 0
+              fi
+
+              echo "Push attempt $attempt failed; refreshing main and retrying."
+              attempt=$((attempt + 1))
+            done
+
+            echo "Could not push the GitOps commit after 3 attempts."
+            exit 1
           '''
-        }
-      }
-      post {
-        always {
-          sh 'if [ -n "$ECR_REGISTRY" ]; then docker logout "$ECR_REGISTRY" >/dev/null 2>&1 || true; fi'
         }
       }
     }
