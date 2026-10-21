@@ -203,12 +203,27 @@ the `retail-store` namespace using an approved credential-refresh mechanism.
 ECR authorization tokens expire; a manually created token secret is not a
 durable production solution.
 
-## 6. Prepare the Linux build agent
+## 6. Prepare the Jenkins build node
 
-Run builds on a dedicated Linux agent, not on the Jenkins controller. Assign
-the agent the exact label `linux-docker`.
+The Jenkinsfile currently uses valid Declarative Pipeline syntax, `agent any`.
+That means Jenkins runs the build on any available executor. If you only have
+the built-in controller node, the build can run there **only if** that node has
+an executor enabled. The node running the build must be Linux, and it must have
+all required tools and AWS permissions.
 
-Install and put these tools on the agent's `PATH`:
+For production, use a dedicated Linux build agent rather than the controller:
+it isolates the controller from Docker access, builds, and untrusted job code.
+For that configuration, change the first lines of `Jenkinsfile` to:
+
+```groovy
+pipeline {
+  agent { label 'linux-docker' }
+```
+
+Then create an online agent with label `linux-docker`. Do not apply that label
+change if you intend to run on the controller and no such agent exists.
+
+Install and put these tools on the node that will execute the build's `PATH`:
 
 - Java 21
 - Go 1.24.4 or later
@@ -219,11 +234,14 @@ Install and put these tools on the agent's `PATH`:
 - Python 3 and Git
 
 The pipeline's Go tests and checkout integration tests use Docker/Testcontainers.
-The Jenkins agent account must be able to reach the Docker daemon. Membership
+The Jenkins build account must be able to reach the Docker daemon. Membership
 in the `docker` group grants effectively root-level access; restrict access to
-trusted build jobs and users.
+trusted build jobs and users. Running Docker-enabled builds on the controller
+increases the impact of compromised or untrusted jobs, so limit who can start
+them and prefer a separate agent.
 
-Check the toolchain and AWS role from the agent itself:
+Check the toolchain and AWS role from the same node/account Jenkins will use
+(the controller, if that is where you chose to run builds):
 
 ```bash
 java -version

@@ -10,18 +10,23 @@ commit on `main`; Jenkins does not need cluster-admin credentials.
 1. Create a **Multibranch Pipeline** for the GitHub repository with a webhook
    trigger. The repository's Argo CD applications currently watch the `main`
    branch.
-2. Configure a Linux agent with the label `linux-docker`, a working Docker
-   daemon, and these tools on `PATH`:
+2. The Jenkinsfile uses `agent any`, so the build runs on any available
+   executor, including the built-in controller node if it has executors
+   enabled. The selected node must be Linux, have a working Docker daemon, and
+   have these tools on `PATH`:
    - Java 21
    - Go 1.24.4 or later
    - Node.js 20 and Yarn Classic 1.22
    - AWS CLI v2, Helm 3, Python 3, and Git
    The Go catalog tests and checkout integration tests use Testcontainers, so
-   the agent must allow builds to access its Docker daemon.
+   the build node must allow builds to access its Docker daemon. For production,
+   use a dedicated Linux agent instead of running builds on the controller;
+   set the Jenkinsfile agent to `label 'linux-docker'` and configure that label
+   on the dedicated agent.
 3. Install Jenkins Pipeline, Git, SSH Agent, and JUnit plugins.
-4. Set `AWS_ACCOUNT_ID` and `AWS_REGION` in the Jenkins folder or agent
-   environment. Attach an AWS IAM role to the agent rather than storing AWS
-   access keys in the repository or Jenkinsfile.
+4. Set `AWS_ACCOUNT_ID` and `AWS_REGION` in the Jenkins folder or build-node
+   environment. Attach an AWS IAM role to the build node rather than storing
+   AWS access keys in the repository or Jenkinsfile.
 5. Create these ECR repositories in that account and region:
    `retail-store-ui`, `retail-store-catalog`, `retail-store-cart`,
    `retail-store-checkout`, and `retail-store-orders`. Configure tag
