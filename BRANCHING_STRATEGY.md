@@ -45,17 +45,17 @@ Simple deployment with public container images for demos, learning, and quick te
 ### **Characteristics**
 ```yaml
 ✅ Branch: main
-✅ Images: Public ECR (stable versions)
-✅ Deployment: Manual Helm chart management
-✅ ArgoCD: Umbrella chart (retail-store-app)
-✅ Workflows: None (no .github/workflows/)
-✅ Updates: Manual only
+✅ Images: Public ECR by default; Jenkins can publish private ECR images
+✅ Deployment: Manual by default; Argo CD syncs Jenkins-updated chart values
+✅ ArgoCD: Individual service applications in argocd/applications/
+✅ Workflows: Jenkinsfile (no .github/workflows/)
+✅ Updates: Manual unless Jenkins CI/CD is configured
 ✅ Target: Demos, learning, simple deployments
 ```
 
 ### **Image Configuration**
 ```yaml
-# All services use public ECR images
+# Default chart values use public ECR images until Jenkins publishes to private ECR
 ui: public.ecr.aws/aws-containers/retail-store-sample-ui:1.2.2
 catalog: public.ecr.aws/aws-containers/retail-store-sample-catalog:1.2.2
 cart: public.ecr.aws/aws-containers/retail-store-sample-cart:1.2.2

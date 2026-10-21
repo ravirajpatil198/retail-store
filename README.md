@@ -31,6 +31,7 @@ This is a sample application designed to illustrate various concepts related to 
 - [EKS Auto Mode](#eks-auto-mode)
 - [Infrastructure Components](#infrastructure-components)
 - [CI/CD Pipeline](#cicd-pipeline)
+- [Jenkins CI/CD](./JENKINS.md)
 - [Monitoring and Observability](#monitoring-and-observability)
 - [Cleanup](https://github.com/LondheShubham153/retail-store-sample-app/blob/main/README.md#step-12-cleanup)
 - [Troubleshooting](#troubleshooting)
@@ -351,6 +352,12 @@ terraform destroy --auto-approve
 
 
 
+## CI/CD Pipeline
+
+Jenkins runs the service checks, publishes versioned images to Amazon ECR, and
+updates the Helm values consumed by Argo CD. See [JENKINS.md](./JENKINS.md)
+for Jenkins agent, IAM, ECR, and GitHub setup.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -397,4 +404,3 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 **🔄 For advanced GitOps workflows, see [BRANCHING_STRATEGY.md](./BRANCHING_STRATEGY.md)**
 
 </div>
-
