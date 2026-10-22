@@ -118,6 +118,7 @@ pipeline {
 
         sh '''
           set -eu
+          VERSION_TAG="${VERSION_TAG:-}"
           aws sts get-caller-identity >/dev/null
           aws ecr get-login-password --region "$AWS_REGION" |
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
