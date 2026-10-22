@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   options {
-    buildDiscarder(logRotator(numToKeepStr: '20'))
+    buildDiscarder(logRotator(numToKeepStr: '5'))
     disableConcurrentBuilds()
     skipDefaultCheckout(true)
     timestamps()
@@ -71,6 +71,7 @@ pipeline {
 
     stage('Build and publish images') {
       when {
+<<<<<<< HEAD
         anyOf {
           allOf {
             changeset 'src/**'
@@ -85,6 +86,30 @@ pipeline {
             }
           }
           expression { currentBuild.previousBuild == null }
+=======
+        allOf {
+          anyOf {
+            branch 'main'
+            branch 'feature'
+            buildingTag()
+          }
+          anyOf {
+            allOf {
+              changeset 'src/**'
+              not {
+                anyOf {
+                  changeset 'src/ui/chart/values.yaml'
+                  changeset 'src/catalog/chart/values.yaml'
+                  changeset 'src/cart/chart/values.yaml'
+                  changeset 'src/checkout/chart/values.yaml'
+                  changeset 'src/orders/chart/values.yaml'
+                }
+              }
+            }
+            expression { currentBuild.previousBuild == null }
+            buildingTag()
+          }
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
         }
       }
       steps {
@@ -97,6 +122,7 @@ pipeline {
           }
 
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+<<<<<<< HEAD
           env.SEMVER = sh(
             script: "sed -n 's/^version: *//p' src/app/chart/Chart.yaml | head -n 1",
             returnStdout: true
@@ -113,11 +139,23 @@ pipeline {
           env.IMAGE_TAG = "${env.SEMVER}-branch-${branchSlug}.${env.GIT_REVISION.take(12)}"
           if (env.IMAGE_TAG.length() > 128) {
             error('Generated image tag exceeds Docker\'s 128-character limit; shorten the chart version.')
+=======
+          env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+          env.IMAGE_TAG = env.GIT_REVISION.take(12)
+          env.VERSION_TAG = ''
+
+          if (env.TAG_NAME) {
+            if (!(env.TAG_NAME ==~ /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/)) {
+              error("Git tag '${env.TAG_NAME}' is not a valid semantic version (expected vMAJOR.MINOR.PATCH, optionally with prerelease/build metadata).")
+            }
+            env.VERSION_TAG = env.TAG_NAME.replaceFirst(/^v/, '').replace('+', '_')
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
           }
         }
 
         sh '''
           set -eu
+          VERSION_TAG="${VERSION_TAG:-}"
           aws sts get-caller-identity >/dev/null
           aws ecr get-login-password --region "$AWS_REGION" |
             docker login --username AWS --password-stdin "$ECR_REGISTRY"
@@ -132,16 +170,47 @@ pipeline {
                 --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$image")
               if [ "$existing_revision" != "$GIT_REVISION" ]; then
                 echo "Image tag $image already belongs to revision ${existing_revision:-unknown}."
+<<<<<<< HEAD
                 echo "Bump src/app/chart/Chart.yaml version before publishing different code."
+=======
+                echo "Refusing to reuse an image from different source code."
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
                 exit 1
               fi
               echo "Reusing existing image $image"
-              continue
+            else
+              docker build --pull \
+                --label "org.opencontainers.image.revision=$GIT_REVISION" \
+                --tag "$image" "src/$service"
+              docker push "$image"
             fi
+
+            if [ -n "$VERSION_TAG" ]; then
+              version_image="$ECR_REGISTRY/retail-store-$service:$VERSION_TAG"
+              if aws ecr describe-images --region "$AWS_REGION" \
+                --repository-name "retail-store-$service" \
+                --image-ids "imageTag=$VERSION_TAG" >/dev/null 2>&1; then
+                docker pull "$version_image"
+                version_revision=$(docker image inspect \
+                  --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$version_image")
+                if [ "$version_revision" != "$GIT_REVISION" ]; then
+                  echo "Semantic version tag $version_image already belongs to revision ${version_revision:-unknown}."
+                  echo "Refusing to move an existing release tag."
+                  exit 1
+                fi
+                echo "Reusing existing semantic version image $version_image"
+              else
+                docker tag "$image" "$version_image"
+                docker push "$version_image"
+              fi
+            fi
+<<<<<<< HEAD
             docker build --pull \
               --label "org.opencontainers.image.revision=$GIT_REVISION" \
               --tag "$image" "src/$service"
             docker push "$image"
+=======
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
           done
         '''
       }
@@ -151,6 +220,7 @@ pipeline {
         }
       }
     }
+<<<<<<< HEAD
 
     stage('Update GitOps values') {
       when {
@@ -161,7 +231,16 @@ pipeline {
       steps {
         input message: "Deploy image version ${env.IMAGE_TAG} from main to GitOps?",
           ok: 'Approve deployment'
+=======
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 
+    stage('Update GitOps values') {
+      when {
+        expression {
+          env.BRANCH_NAME == 'main' && env.IMAGE_TAG != null
+        }
+      }
+      steps {
         sh '''
           python3 scripts/update-ecr-image-tags.py "$ECR_REGISTRY" "$IMAGE_TAG"
           git config user.name "Jenkins"

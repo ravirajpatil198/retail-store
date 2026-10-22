@@ -12,6 +12,7 @@ to Kubernetes or need cluster-admin credentials.
 
 1. A change is pushed to GitHub and starts a Jenkins multibranch build.
 2. Jenkins lints the Helm charts and tests the Go, Java, and Node.js services.
+<<<<<<< HEAD
 3. When `src/` changes, Jenkins publishes images for `main` and `feature` to
    the five ECR repositories. `main` uses tags such as `prod-1.2.5`; `feature`
    uses tags such as `feature-1.2.5`. The version is read from
@@ -24,6 +25,21 @@ Other branches run validation only. Feature builds publish images but do not
 change Helm values or push to `main`. Jenkins-generated service `values.yaml`
 commits do not trigger another image publish. Bump the chart version for each
 new release; ECR tags are immutable and cannot be reused for different code.
+=======
+3. When files under `src/` change (or on the first build for that branch),
+   Jenkins publishes images for `main` and `feature` to the five ECR
+   repositories. Each image tag is the first 12 characters of the source Git
+   commit SHA.
+4. Only `main` updates the five service chart values to the commit-tagged image
+   and pushes a GitOps commit.
+5. Argo CD sees the `main` values commit and syncs the Helm releases to EKS.
+
+Branches other than `main` and `feature` run validation only. Feature builds
+publish images but do not change Helm values or push to `main`.
+Jenkins-generated service `values.yaml` commits do not trigger another image
+publish. ECR tags are immutable; on a retry, Jenkins reuses an existing image
+only when its full source revision matches the current commit.
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 
 ## 2. Decide the AWS and GitHub settings
 
@@ -116,9 +132,14 @@ role instead of this operator profile.
 ## 4. Create the five immutable ECR repositories
 
 Create the repositories in the **same account and region** Jenkins will use.
+<<<<<<< HEAD
 The pipeline expects these exact repository names. The `main` branch tags
 images with `prod-` plus the `version` from `src/app/chart/Chart.yaml`; the
 `feature` branch uses `feature-` plus that same SemVer version:
+=======
+The pipeline expects these exact repository names. Image tags are the first
+12 characters of the source Git commit SHA, independent of the chart version.
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 
 ```bash
 export AWS_REGION=us-west-2
@@ -359,12 +380,17 @@ Trigger a build of `main` or `feature`. The first build for that branch
 publishes images even if Jenkins does not report a source changeset. Watch for
 these stages:
 
+<<<<<<< HEAD
 - **Checkout** succeeds and checks out the selected branch (`main` or
   `feature`).
+=======
+- **Checkout** succeeds and checks out the selected branch.
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 - **Lint Helm charts** succeeds.
 - **Test services** completes all parallel service branches.
 - **Build and publish images** authenticates to AWS and publishes or reuses
   images. `main` then updates chart values and pushes the GitOps commit;
+<<<<<<< HEAD
   `feature` only publishes feature-tagged images.
 
 After the build:
@@ -372,6 +398,14 @@ After the build:
 1. In ECR, confirm all five repositories contain images tagged
    `prod-MAJOR.MINOR.PATCH` for `main`, or `feature-MAJOR.MINOR.PATCH` for
    `feature`.
+=======
+  `feature` only publishes commit-tagged images.
+
+After the build:
+
+1. In ECR, confirm all five repositories contain images tagged with the first
+   12 characters of the source commit SHA.
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 2. For `main` only, in GitHub confirm a `ci: deploy images ... [skip ci]`
    commit updated the five service chart values.
 3. For `main` only, in Argo CD confirm all five applications are synced and
@@ -384,6 +418,7 @@ After the build:
    kubectl get events -n retail-store --sort-by=.lastTimestamp
    ```
 
+<<<<<<< HEAD
 5. For a subsequent release, bump `src/app/chart/Chart.yaml`; confirm the
    relevant branch publishes its new SemVer tag. Only a `main` build updates
    chart values and triggers the Argo CD rollout.
@@ -391,6 +426,15 @@ After the build:
 The pipeline uses immutable ECR tags and labels images with their source Git
 revision. Retries reuse images only when their revision matches the current
 source. If a tag belongs to different code, bump the chart version.
+=======
+5. For a subsequent release, confirm the source changes produce a new commit
+   SHA tag. Only a `main` build updates chart values and triggers the Argo CD
+   rollout.
+
+The pipeline uses immutable ECR tags and labels images with their full source
+Git revision. Retries reuse images only when their revision matches the
+current source; a mismatched existing tag fails the build.
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 
 ## 12. Troubleshooting
 
@@ -401,12 +445,16 @@ source. If a tag belongs to different code, bump the chart version.
 | `aws sts get-caller-identity` fails | Confirm the instance role is attached to the agent and its trust relationship is correct; do not add static keys as a workaround. |
 | ECR login or image push is denied | Check `AWS_ACCOUNT_ID`, `AWS_REGION`, repository names, and the scoped ECR push policy. |
 | ECR repository is missing | Create the exact `retail-store-{ui,catalog,cart,checkout,orders}` repositories in the configured account and region. |
-| Jenkins cannot push the chart update | Confirm `gitops-ssh-key` exists, GitHub accepts its public key, the key can write to `main`, and `origin` is the intended GitHub repository. |
+| Jenkins cannot push the chart update | The pipeline fetches and rebases its generated commit, then retries pushes up to three times. Confirm `gitops-ssh-key` can write to `main`; if Jenkins reports a rebase conflict, reconcile the chart-value changes and rerun the build. |
 | Argo CD reports a repository/project error | Compare the `repoURL` in all five application files with the `sourceRepos` allowed in the AppProject and the real repository URL. |
 | Argo CD cannot pull a private image | Confirm the EKS node role has ECR pull permissions and resolve the charts' `regcred` reference as described in step 5. |
 | A branch build does not publish images | Publishing is enabled only for `main` and `feature`, and for changes under `src/` (or the branch's first build). Jenkins-generated service chart values are excluded. |
 | A chart-only commit starts another build | Tests may run, but Jenkins-generated service `values.yaml` changes are excluded from the image-publish condition. |
+<<<<<<< HEAD
 | ECR reports an immutable-tag conflict | Keep tags immutable. Retry to reuse an image for the same source revision, or bump `src/app/chart/Chart.yaml` before publishing different code. |
+=======
+| ECR reports an immutable-tag conflict | Keep tags immutable. Retry to reuse an image for the same source revision; a mismatched existing tag indicates a collision or inconsistent image and fails safely. |
+>>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 
 ## 13. Operational notes and cleanup
 
