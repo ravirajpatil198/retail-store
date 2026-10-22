@@ -68,23 +68,28 @@ pipeline {
       }
     }
 
-    stage('Build, publish, and deploy') {
+    stage('Build and publish images') {
       when {
-        branch 'main'
-        anyOf {
-          allOf {
-            changeset 'src/**'
-            not {
-              anyOf {
-                changeset 'src/ui/chart/values.yaml'
-                changeset 'src/catalog/chart/values.yaml'
-                changeset 'src/cart/chart/values.yaml'
-                changeset 'src/checkout/chart/values.yaml'
-                changeset 'src/orders/chart/values.yaml'
+        allOf {
+          anyOf {
+            branch 'main'
+            branch 'feature'
+          }
+          anyOf {
+            allOf {
+              changeset 'src/**'
+              not {
+                anyOf {
+                  changeset 'src/ui/chart/values.yaml'
+                  changeset 'src/catalog/chart/values.yaml'
+                  changeset 'src/cart/chart/values.yaml'
+                  changeset 'src/checkout/chart/values.yaml'
+                  changeset 'src/orders/chart/values.yaml'
+                }
               }
             }
+            expression { currentBuild.previousBuild == null }
           }
-          expression { currentBuild.previousBuild == null }
         }
       }
       steps {
@@ -97,14 +102,8 @@ pipeline {
           }
 
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-          env.IMAGE_TAG = sh(
-            script: "sed -n 's/^version: *//p' src/app/chart/Chart.yaml | head -n 1",
-            returnStdout: true
-          ).trim()
-          if (!(env.IMAGE_TAG ==~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)) {
-            error('Set src/app/chart/Chart.yaml version to a SemVer MAJOR.MINOR.PATCH value, for example 1.2.3.')
-          }
           env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+          env.IMAGE_TAG = env.GIT_REVISION.take(12)
         }
 
         sh '''
@@ -123,7 +122,7 @@ pipeline {
                 --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$image")
               if [ "$existing_revision" != "$GIT_REVISION" ]; then
                 echo "Image tag $image already belongs to revision ${existing_revision:-unknown}."
-                echo "Bump src/app/chart/Chart.yaml version before publishing a different revision."
+                echo "Refusing to reuse an image from different source code."
                 exit 1
               fi
               echo "Reusing existing image $image"
@@ -135,7 +134,21 @@ pipeline {
             docker push "$image"
           done
         '''
+      }
+      post {
+        always {
+          sh 'if [ -n "$ECR_REGISTRY" ]; then docker logout "$ECR_REGISTRY" >/dev/null 2>&1 || true; fi'
+        }
+      }
+    }
 
+    stage('Update GitOps values') {
+      when {
+        expression {
+          env.BRANCH_NAME == 'main' && env.IMAGE_TAG != null
+        }
+      }
+      steps {
         sh '''
           python3 scripts/update-ecr-image-tags.py "$ECR_REGISTRY" "$IMAGE_TAG"
           git config user.name "Jenkins"
@@ -179,11 +192,6 @@ pipeline {
             echo "Could not push the GitOps commit after 3 attempts."
             exit 1
           '''
-        }
-      }
-      post {
-        always {
-          sh 'if [ -n "$ECR_REGISTRY" ]; then docker logout "$ECR_REGISTRY" >/dev/null 2>&1 || true; fi'
         }
       }
     }
