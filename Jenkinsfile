@@ -17,7 +17,8 @@ pipeline {
 
     stage('Lint Helm charts') {
       steps {
-        sh 'helm lint src/cart/chart src/catalog/chart src/checkout/chart src/orders/chart src/ui/chart'
+        sh 'helm dependency build src/app/chart'
+        sh 'helm lint src/app/chart src/cart/chart src/catalog/chart src/checkout/chart src/orders/chart src/ui/chart'
       }
     }
 
@@ -71,10 +72,6 @@ pipeline {
     stage('Build and publish images') {
       when {
         anyOf {
-          branch 'main'
-          branch 'feature'
-        }
-        anyOf {
           allOf {
             changeset 'src/**'
             not {
@@ -107,15 +104,16 @@ pipeline {
           if (!(env.SEMVER ==~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)) {
             error('Set src/app/chart/Chart.yaml version to a SemVer MAJOR.MINOR.PATCH value, for example 1.2.3.')
           }
-          if (env.BRANCH_NAME == 'main') {
-            env.IMAGE_TAG_PREFIX = 'prod'
-          } else if (env.BRANCH_NAME == 'feature') {
-            env.IMAGE_TAG_PREFIX = 'feature'
-          } else {
-            error("Image publishing is not configured for branch '${env.BRANCH_NAME}'.")
-          }
-          env.IMAGE_TAG = "${env.IMAGE_TAG_PREFIX}-${env.SEMVER}"
           env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+          def branchSlug = env.BRANCH_NAME.toLowerCase().replaceAll(/[^0-9a-z-]+/, '-')
+            .replaceAll(/^-+|-+$/, '').take(40)
+          if (!branchSlug) {
+            branchSlug = 'branch'
+          }
+          env.IMAGE_TAG = "${env.SEMVER}-branch-${branchSlug}.${env.GIT_REVISION.take(12)}"
+          if (env.IMAGE_TAG.length() > 128) {
+            error('Generated image tag exceeds Docker\'s 128-character limit; shorten the chart version.')
+          }
         }
 
         sh '''
@@ -161,6 +159,9 @@ pipeline {
         }
       }
       steps {
+        input message: "Deploy image version ${env.IMAGE_TAG} from main to GitOps?",
+          ok: 'Approve deployment'
+
         sh '''
           python3 scripts/update-ecr-image-tags.py "$ECR_REGISTRY" "$IMAGE_TAG"
           git config user.name "Jenkins"

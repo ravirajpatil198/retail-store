@@ -11,11 +11,13 @@ def main():
     if not re.fullmatch(r"\d{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com", registry):
         raise SystemExit("Invalid ECR registry")
     if not re.fullmatch(
-        r"(?:feature|prod)-(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)",
+        r"(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+        r"(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)"
+        r"(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?",
         image_tag,
     ):
         raise SystemExit(
-            "Image tag must be feature-MAJOR.MINOR.PATCH or prod-MAJOR.MINOR.PATCH"
+            "Image tag must be SemVer MAJOR.MINOR.PATCH with an optional prerelease"
         )
 
     for service in ("ui", "catalog", "cart", "checkout", "orders"):
