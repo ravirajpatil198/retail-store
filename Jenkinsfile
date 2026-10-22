@@ -74,6 +74,7 @@ pipeline {
           anyOf {
             branch 'main'
             branch 'feature'
+            buildingTag()
           }
           anyOf {
             allOf {
@@ -89,6 +90,7 @@ pipeline {
               }
             }
             expression { currentBuild.previousBuild == null }
+            buildingTag()
           }
         }
       }
@@ -104,6 +106,14 @@ pipeline {
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
           env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = env.GIT_REVISION.take(12)
+          env.VERSION_TAG = ''
+
+          if (env.TAG_NAME) {
+            if (!(env.TAG_NAME ==~ /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/)) {
+              error("Git tag '${env.TAG_NAME}' is not a valid semantic version (expected vMAJOR.MINOR.PATCH, optionally with prerelease/build metadata).")
+            }
+            env.VERSION_TAG = env.TAG_NAME.replaceFirst(/^v/, '').replace('+', '_')
+          }
         }
 
         sh '''
@@ -126,12 +136,32 @@ pipeline {
                 exit 1
               fi
               echo "Reusing existing image $image"
-              continue
+            else
+              docker build --pull \
+                --label "org.opencontainers.image.revision=$GIT_REVISION" \
+                --tag "$image" "src/$service"
+              docker push "$image"
             fi
-            docker build --pull \
-              --label "org.opencontainers.image.revision=$GIT_REVISION" \
-              --tag "$image" "src/$service"
-            docker push "$image"
+
+            if [ -n "$VERSION_TAG" ]; then
+              version_image="$ECR_REGISTRY/retail-store-$service:$VERSION_TAG"
+              if aws ecr describe-images --region "$AWS_REGION" \
+                --repository-name "retail-store-$service" \
+                --image-ids "imageTag=$VERSION_TAG" >/dev/null 2>&1; then
+                docker pull "$version_image"
+                version_revision=$(docker image inspect \
+                  --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$version_image")
+                if [ "$version_revision" != "$GIT_REVISION" ]; then
+                  echo "Semantic version tag $version_image already belongs to revision ${version_revision:-unknown}."
+                  echo "Refusing to move an existing release tag."
+                  exit 1
+                fi
+                echo "Reusing existing semantic version image $version_image"
+              else
+                docker tag "$image" "$version_image"
+                docker push "$version_image"
+              fi
+            fi
           done
         '''
       }
