@@ -71,22 +71,6 @@ pipeline {
 
     stage('Build and publish images') {
       when {
-<<<<<<< HEAD
-        anyOf {
-          allOf {
-            changeset 'src/**'
-            not {
-              anyOf {
-                changeset 'src/ui/chart/values.yaml'
-                changeset 'src/catalog/chart/values.yaml'
-                changeset 'src/cart/chart/values.yaml'
-                changeset 'src/checkout/chart/values.yaml'
-                changeset 'src/orders/chart/values.yaml'
-              }
-            }
-          }
-          expression { currentBuild.previousBuild == null }
-=======
         allOf {
           anyOf {
             branch 'main'
@@ -109,7 +93,6 @@ pipeline {
             expression { currentBuild.previousBuild == null }
             buildingTag()
           }
->>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
         }
       }
       steps {
@@ -122,24 +105,6 @@ pipeline {
           }
 
           env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-<<<<<<< HEAD
-          env.SEMVER = sh(
-            script: "sed -n 's/^version: *//p' src/app/chart/Chart.yaml | head -n 1",
-            returnStdout: true
-          ).trim()
-          if (!(env.SEMVER ==~ /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/)) {
-            error('Set src/app/chart/Chart.yaml version to a SemVer MAJOR.MINOR.PATCH value, for example 1.2.3.')
-          }
-          env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
-          def branchSlug = env.BRANCH_NAME.toLowerCase().replaceAll(/[^0-9a-z-]+/, '-')
-            .replaceAll(/^-+|-+$/, '').take(40)
-          if (!branchSlug) {
-            branchSlug = 'branch'
-          }
-          env.IMAGE_TAG = "${env.SEMVER}-branch-${branchSlug}.${env.GIT_REVISION.take(12)}"
-          if (env.IMAGE_TAG.length() > 128) {
-            error('Generated image tag exceeds Docker\'s 128-character limit; shorten the chart version.')
-=======
           env.GIT_REVISION = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
           env.IMAGE_TAG = env.GIT_REVISION.take(12)
           env.VERSION_TAG = ''
@@ -149,7 +114,6 @@ pipeline {
               error("Git tag '${env.TAG_NAME}' is not a valid semantic version (expected vMAJOR.MINOR.PATCH, optionally with prerelease/build metadata).")
             }
             env.VERSION_TAG = env.TAG_NAME.replaceFirst(/^v/, '').replace('+', '_')
->>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
           }
         }
 
@@ -170,11 +134,7 @@ pipeline {
                 --format='{{ with .Config.Labels }}{{ index . "org.opencontainers.image.revision" }}{{ end }}' "$image")
               if [ "$existing_revision" != "$GIT_REVISION" ]; then
                 echo "Image tag $image already belongs to revision ${existing_revision:-unknown}."
-<<<<<<< HEAD
-                echo "Bump src/app/chart/Chart.yaml version before publishing different code."
-=======
                 echo "Refusing to reuse an image from different source code."
->>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
                 exit 1
               fi
               echo "Reusing existing image $image"
@@ -204,13 +164,6 @@ pipeline {
                 docker push "$version_image"
               fi
             fi
-<<<<<<< HEAD
-            docker build --pull \
-              --label "org.opencontainers.image.revision=$GIT_REVISION" \
-              --tag "$image" "src/$service"
-            docker push "$image"
-=======
->>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
           done
         '''
       }
@@ -220,19 +173,6 @@ pipeline {
         }
       }
     }
-<<<<<<< HEAD
-
-    stage('Update GitOps values') {
-      when {
-        expression {
-          env.BRANCH_NAME == 'main' && env.IMAGE_TAG != null
-        }
-      }
-      steps {
-        input message: "Deploy image version ${env.IMAGE_TAG} from main to GitOps?",
-          ok: 'Approve deployment'
-=======
->>>>>>> 3e49cd7c52bb5abcf81cb4a8979a8f83ef2ab3fb
 
     stage('Update GitOps values') {
       when {
